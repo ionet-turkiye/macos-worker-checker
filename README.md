@@ -1,6 +1,6 @@
 # IONet Worker Management Script
 
-This script offers a comprehensive solution for managing IONet Workers on macOS, focusing on ease of use and automation. It includes functionalities such as health checks, binary reinstallation, Docker cleanup, energy saver adjustments, Rosetta 2 installation, and an AutoPilot setup for routine maintenance.
+This script offers a comprehensive solution for managing IONet Workers on macOS, focusing on ease of use and automation. It includes functionalities such as health checks, binary reinstallation, Docker cleanup, energy-saving adjustments, Rosetta 2 installation, and an AutoPilot setup for routine maintenance.
 
 ## Features
 
@@ -24,7 +24,7 @@ This script offers a comprehensive solution for managing IONet Workers on macOS,
 1. **Download the script** using `curl`:
 
    ```sh
-   curl -o ionet-management.sh https://raw.githubusercontent.com/your-username/repository-name/main/ionet-management.sh
+   curl -o ionet-management.sh https://raw.githubusercontent.com/ionet-turkiye/macos-worker-checker/main/ionet-worker.sh
 
 
 2. **Make the script executable** using :
