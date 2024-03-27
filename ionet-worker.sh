@@ -200,6 +200,7 @@ function reinstallIONetWorker {
 if ! healthCheck; then
     reinstallIONetWorker
 fi
+exit 0
 EOF
 
     chmod +x "$worker_script_path"
@@ -208,6 +209,7 @@ EOF
     echo "Creating AutoPilot script at $script_path"
     echo "#!/bin/bash" > "$script_path"
     echo "bash $worker_script_path" >> "$script_path"
+    echo "exit 0" >> "$script_path"
     chmod +x "$script_path"
 
     # Schedule the job in crontab
