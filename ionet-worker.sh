@@ -11,7 +11,7 @@ if [ -f ionet-worker-connect.txt ]; then
     echo "Do you want to use the existing command? (yes/no)"
     read use_existing_command
     
-    if [ "$use_existing_command" == "yes" ]; then
+    if [[ "$use_existing_command" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         deployment_command=$(cat ionet-worker-connect.txt)
     else
         echo "Please enter the deployment command:"
@@ -35,9 +35,33 @@ function healthCheck {
         return 0
     else
         echo -e "${RED}Health check failed. System not operational.${NC}"
+        echo "Do you want to fix the problem and install worker node ? (yes/no)"
+        read response
+        if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+            reinstallIONetWorker
+        else
+            echo -e "${GREEN}Skipping reinstallIONetWorker.${NC}"
+        fi
         return 1
     fi
 }
+
+function reinstallIONet {
+    echo "Downloading and setting up IONet Binary..."
+    curl -s -L https://github.com/ionet-official/io_launch_binaries/raw/main/launch_binary_mac -o launch_binary_mac && chmod +x launch_binary_mac && echo -e "${GREEN}IONet Binary reinstallation completed.${NC}" || echo -e "${RED}Failed to download IONet Binary.${NC}"
+
+    echo "Cleaning up existing Docker components before reinstalling IONet Worker..."
+    removeAllDeployment
+    
+    echo "Reinstalling IONet Worker using command from ionet-worker-connect.txt..."
+    deployment_command=$(cat ionet-worker-connect.txt)
+    if bash -c "$deployment_command"; then
+        echo -e "${GREEN}IONet Worker reinstallation completed using the provided command.${NC}"
+    else
+        echo -e "${RED}Failed to reinstall IONet Worker using the provided command.${NC}"
+    fi
+}
+
 
 function reinstallIONetBinary {
     echo "Downloading and setting up IONet Binary..."
@@ -129,55 +153,131 @@ function scheduleAutopilot {
     echo -e "${GREEN}Enter the time interval in minutes for the AutoPilot schedule:${NC}"
     read minutes
 
-    # Proceed to schedule if no existing job is found
+    # Define the path for the autopilot and worker script
     local script_path="$(pwd)/ionet-worker-autopilot.sh"
-    if [ ! -f "$script_path" ]; then
-        # Create the autopilot script if it doesn't exist
-        echo -e "${GREEN}Creating AutoPilot script at $script_path${NC}"
-        echo "#!/bin/bash" > "$script_path"
-        echo "cd $(pwd)" >> "$script_path"
-        echo "bash $(pwd)/your_health_check_and_redeploy_script.sh" >> "$script_path"
-        chmod +x "$script_path"
-    fi
+    local worker_script_path="$(pwd)/ionet-worker-autopilot2.sh"
 
+    # Create the ionet-worker-autopilot-worker.sh script with necessary functions and checks
+    echo "Creating AutoPilot worker script at $worker_script_path"
+    cat <<EOF > "$worker_script_path"
+#!/bin/bash
+# Define color codes
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Health Check Function
+function healthCheck {
+    local image_count=\$(docker image ls | grep -c ionet)
+    local container_count=\$(docker ps | grep -c ionet)
+
+    if [ \$image_count -eq 3 ] && [ \$container_count -eq 2 ]; then
+        echo -e "\${GREEN}All systems operational.\${NC}"
+        return 0
+    else
+        echo -e "\${RED}Health check failed. System not operational.\${NC}"
+        return 1
+    fi
+}
+
+# Reinstall IONet Worker Function
+function reinstallIONetWorker {
+    echo "Cleaning up existing Docker components before reinstalling IONet Worker..."
+    docker stop \$(docker ps -a -q)
+    docker rm \$(docker ps -a -q)
+    docker rmi \$(docker images -q)
+    docker volume rm \$(docker volume ls -q)
+    echo "Reinstalling IONet Worker using command from ionet-worker-connect.txt..."
+    deployment_command=\$(cat ionet-worker-connect.txt)
+    if bash -c "\$deployment_command"; then
+        echo -e "\${GREEN}IONet Worker reinstallation completed using the provided command.\${NC}"
+    else
+        echo -e "\${RED}Failed to reinstall IONet Worker using the provided command.\${NC}"
+    fi
+}
+
+# Run health check, and reinstall if needed
+if ! healthCheck; then
+    reinstallIONetWorker
+fi
+EOF
+
+    chmod +x "$worker_script_path"
+
+    # Create or update the autopilot script
+    echo "Creating AutoPilot script at $script_path"
+    echo "#!/bin/bash" > "$script_path"
+    echo "bash $worker_script_path" >> "$script_path"
+    chmod +x "$script_path"
+
+    # Schedule the job in crontab
     (crontab -l 2>/dev/null; echo "*/$minutes * * * * $script_path") | crontab -
     echo -e "${GREEN}AutoPilot scheduled every $minutes minutes.${NC}"
 }
 
 
+
 function listAutopilot {
-    echo -e "${GREEN}Listing AutoPilot Schedule...${NC}"
-    crontab -l | grep 'ionet-worker-autopilot.sh'
+    local autopilot_entries=$(crontab -l | grep 'ionet')
+    if [[ -z "$autopilot_entries" ]]; then
+        echo -e "${RED}No AutoPilot schedules found or crontab is empty.${NC}"
+    else
+        echo -e "${GREEN}Listing AutoPilot Schedule...${NC}"
+        echo "$autopilot_entries"
+    fi
 }
 
+
 function deleteAutopilot {
-    crontab -l | grep -v 'ionet-worker-autopilot.sh' | crontab -
-    echo -e "${GREEN}AutoPilot schedule deleted.${NC}"
+    rm -f ionet-worker-autopilot*.sh 
+    # Check if the autopilot script is scheduled in crontab
+    if crontab -l | grep -q 'ionet'; then
+        # Job found; proceed with deletion
+        crontab -l | grep -v 'ionet' | crontab -
+        echo -e "${GREEN}AutoPilot schedule deleted.${NC}"
+    else
+        # No job found; nothing to delete
+        echo -e "${RED}No AutoPilot schedule found to delete.${NC}"
+    fi
 }
+
 
 # Main Loop
 
 while true; do
     echo "1 - Health Check"
-    echo "2 - ReInstall IONet Binary"
-    echo "3 - ReInstall IONet Worker"
-    echo "4 - Remove ALL Deployment"
-    echo "5 - Disable Energy Saver / Screen Saver"
-    echo "6 - Rosetta Installation"
-    echo "7 - AutoPilot Setup"
-    echo "8 - Quit"
+    echo "2 - Re Install IONet"
+    echo "3 - Remove ALL Deployment"
+    echo "4 - AutoPilot Setup"
+    echo "5 - More Options"
+    echo "6 - Quit"
+
     echo -e "${GREEN}Select an option:${NC}"
     read option
 
     case $option in
         1) healthCheck ;;
-        2) reinstallIONetBinary ;;
-        3) reinstallIONetWorker ;;
-        4) removeAllDeployment ;;
-        5) disableEnergySaver ;;
-        6) installRosetta ;;
-        7) autopilotSetup ;;
-        8) echo -e "${GREEN}Exiting...${NC}"; exit 0 ;;
+        2) reinstallIONet ;;
+        3) removeAllDeployment ;;
+        4) autopilotSetup ;;
+        6) echo -e "${GREEN}Exiting...${NC}"; exit 0 ;;
+        5) 
+           # Submenu for More Options
+           while true; do
+               echo "7 - Disable Energy Saver / Screen Saver"
+               echo "8 - Rosetta Installation"
+               echo "9 - Return to Main Menu"
+               echo -e "${GREEN}Select an option:${NC}"
+               read submenu_option
+
+               case $submenu_option in
+                   7) disableEnergySaver ;;
+                   8) installRosetta ;;
+                   9) break ;; # Exit the submenu loop to return to the main menu
+                   *) echo -e "${RED}Invalid option. Please try again.${NC}" ;;
+               esac
+           done
+           ;;
         *) echo -e "${RED}Invalid option. Please try again.${NC}" ;;
     esac
 done
