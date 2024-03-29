@@ -38,6 +38,7 @@ Simply run the script with the following command:
    ```sh
    ./ionet-management.sh
 ```
+make sure you typed correct command. check https://github.com/ionet-turkiye/macos-worker-checker/blob/main/macos-command.png for example.
 
 ### Contributing
 Feel free to contribute to the development of this script. Please adhere to the project's contribution guidelines specified in CONTRIBUTING.md.
